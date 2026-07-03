@@ -1,4 +1,4 @@
-import pkg from "@slack/bolt";
+import pkg, { MemoryInstallationStore } from "@slack/bolt";
 const { App } = pkg;
 import { WebClient } from "@slack/web-api";
 import { ChatOpenAI } from "@langchain/openai";
@@ -96,8 +96,67 @@ class SlacKAIAgent {
     });
   }
 
-  async getUSERINFO(userId) {
+  async getUserInfo(userId) {
     const result = await this.webclient.info({ user: userId });
     const user = result.user;
+
+    return {
+      id: user.id,
+      name: user.real_name || user.name,
+      username: user.name,
+      email: user.profile?.email,
+      title: user.profile?.title,
+      timezone: user.tz,
+      profile: {
+        firstname: user.profile?.first_name,
+        lastname: user.profile?.last_name,
+        statusText: user.profile?.status_text,
+      },
+    };
   }
+  async analyzeAndPostMember(memberInfo) {
+    let analysisId = null;
+    try {
+      log.info(`Processing member: ${memberInfo.name}`);
+      const researchData = await this.dobasicResearch(memberInfo);
+      const analysis = await this.analyzewithAI(memberInfo, researchData);
+      log.info(`Saving analysis to database for ${memberInfo.name}`);
+      analysisId = await savememberAnalysis(memberInfo, analysis, researchData);
+      await this.postAnalysisToChannel(memberInfo, analysis, researchData);
+
+      if (analysisId) {
+        await markAsSentToSlack(analysisId);
+      }
+    } catch (error) {
+      log.error(`Error processing ${memeberInfo.name}:`, error.message);
+      if (analysisId) {
+        log.info(
+          `Analysis ${analysisId} save to database but not to slack due to error`,
+        );
+      }
+      throw error;
+    }
+  }
+
+   async doBasicResearch(){
+    const results =[];
+    try {
+      if(memberInfo.email && !this.personalEmail(memberInfo.email))
+        const domain = memberInfo.email.split('@')[1];
+        const companyInfo = await this.getCompanyInfo(domain);
+         if(companyInfo) results.push(companyInfo);
+
+
+          if (memberInfo.name){
+            const githubInfo = await this.getGitHubInfo(memberInfo.name);
+            if(githubInfo) results.push(githubInfo);
+          }
+         
+      } catch (error) {
+      log.error(`Research error:`,error.message);
+    }
+   }
+
+
+
 }
